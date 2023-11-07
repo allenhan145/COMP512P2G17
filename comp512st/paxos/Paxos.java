@@ -1,10 +1,5 @@
 package comp512st.paxos;
 
-// Access to the GCL layer
-import comp512.gcl.*;
-
-import comp512.utils.*;
-
 // Any other imports that you may need.
 import java.io.IOException;
 import java.io.Serializable;
@@ -15,6 +10,10 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+
+// Access to the GCL layer
+import comp512.gcl.*;
+import comp512.utils.*;
 
 // ANY OTHER classes, etc., that you add must be private to this package and not visible to the application layer.
 
@@ -43,8 +42,6 @@ public class Paxos
 	int lastAcceptedID;
 	Object defaultAcceptValue;
 
-
-	// this paxos is a proposer
 	public Paxos(String myProcess, String[] allGroupProcesses, Logger logger, FailCheck failCheck) throws IOException, UnknownHostException
 	{
 		this.myProcess = myProcess;
@@ -63,11 +60,9 @@ public class Paxos
 		this.allGroupProcesses = allGroupProcesses;
 		this.failCheck = failCheck;
 
-		// Initialize the GCL communication system as well as anything else you need to.
 		this.gcl = new GCL(myProcess, allGroupProcesses, null, logger) ;
 		deliverableMessages = new LinkedBlockingQueue<>();
 
-		// create thread for listener
 		listener = new ListenerThread();
 		listener.start();
 	}
@@ -103,10 +98,9 @@ public class Paxos
 				switch (paxosMessage.type) {
 					case PROPOSE:
 						failCheck.checkFailure(FailCheck.FailureType.RECEIVEPROPOSE); //to be invoked immediately when a process receives propose message.
+						// MaxID
 						if (receivedBallotId >= maxBallotIdSeen) {
-							// log ballotID in persistent memory
-							this.promisedId = receivedBallotId; // this is the max
-							// update max ballot for compute next id
+							this.promisedId = receivedBallotId;
 							maxBallotIdSeen = receivedBallotId;
 
 						   gcl.sendMsg(new PaxosMessage(MessageType.PROMISE, this.promisedId,
@@ -114,8 +108,8 @@ public class Paxos
 						   // to be invoked immediately AFTER a process sends out its vote for leader election.
 						   failCheck.checkFailure(FailCheck.FailureType.AFTERSENDVOTE);
 						} else {
-							System.out.println(myProcess + " Refusing " + receivedBallotId + " to process " + gcmsg.senderProcess);
 							// refuse and return the highest ballotId seen so far
+							System.out.println(myProcess + " Refusing " + receivedBallotId + " to process " + gcmsg.senderProcess);
 							 gcl.sendMsg(new PaxosMessage(MessageType.REFUSE, this.promisedId, this.acceptedId, this.acceptedValue),
 											gcmsg.senderProcess);
 							 // to be invoked immediately AFTER a process sends out its vote for leader election.
@@ -254,11 +248,12 @@ public class Paxos
 	public void shutdownPaxos()
 	{
 		try {
-			listener.join();
+			listener.join(1000);
 		} catch (InterruptedException e) {
 			listener.interrupt();
 			throw new RuntimeException("Listener thread interrupted. Failed to shutdown", e);
 		}
+		// System.out.println("Paxos shutting down!!!");
 		gcl.shutdownGCL();
 	}
 

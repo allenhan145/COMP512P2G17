@@ -1,22 +1,20 @@
 package comp512st.tests;
 
+import java.io.IOException;
+import java.time.Clock;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Random;
+import java.util.logging.FileHandler;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
+
 import comp512.gcl.*;
 import comp512.ti.*;
 import comp512.utils.*;
-
-import comp512st.paxos.*;
-
-import java.io.*;
-import java.util.Scanner;
-import java.util.Arrays;
-import java.util.Map;
-import java.util.HashMap;
-
-import java.util.Random;
-
-import java.util.logging.*;
-
-import java.time.*;
+import comp512st.paxos.Paxos;
 
 public class TreasureIslandAppAuto implements Runnable
 {
@@ -59,10 +57,13 @@ public class TreasureIslandAppAuto implements Runnable
 		{
 			try
 			{
+				if (Thread.currentThread().isInterrupted()) {
+					break;
+				}
 				Object[] info  = (Object[]) paxos.acceptTOMsg();
 				logger.fine("Received :" + Arrays.toString(info));
 				move((Integer)info[0], (Character)info[1], updateDisplay);
-				//displayIsland(); //we do not want to keep constantly refreshing the output display.
+				// displayIsland(); //we do not want to keep constantly refreshing the output display.
 			}
 			catch(InterruptedException ie)
 			{
@@ -232,8 +233,13 @@ public class TreasureIslandAppAuto implements Runnable
 		{
 			String cmd = moveGen.nextMove();
 			logger.fine("cmd is : " + cmd);
-			if(cmd.equals("E")) break;
+			// ta.displayIsland();
+			if(cmd.equals("E")) {
+				logger.fine("Exiting");
+				System.out.println("Exiting");
 
+				break;
+			}
 			switch(cmd)
 			{
 				case "L":
@@ -271,6 +277,7 @@ public class TreasureIslandAppAuto implements Runnable
 																							// May have to increase this for higher maxmoves and smaller intervals.
 		try{ Thread.sleep(5000); } catch (InterruptedException ie) { logger.log(Level.SEVERE, "I got InterruptedException when I was chilling after all my moves.", ie); }
 		ta.keepExploring = false;
+		ta.tiThread.interrupt();
 		ta.tiThread.join(1000); // Wait maximum 1s for the app to process any more incomming messages that was in the queue.
 		logger.info("Shutting down Paxos");
 		paxos.shutdownPaxos(); // shutdown paxos.

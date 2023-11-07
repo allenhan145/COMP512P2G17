@@ -26,8 +26,8 @@ gameid=game-$group-99
 # player1 -> process 1, player 2 -> process 2, etc .. add more depending on how many players are playing.
 # Remember to start the scripts of corresponding players from the corresponding servers.
 # comment out process3 if you are only playing 2 players, etc.
-export process1=teach-node-04:401$group
-# export process2=server2:402$group
+export process1=teach-node-05:410$group
+export process2=teach-node-05:411$group
 # export process3=server3:403$group
 #export process4=server4:404$group
 #export process5=server5:405$group
