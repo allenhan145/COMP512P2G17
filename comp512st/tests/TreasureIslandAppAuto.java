@@ -25,7 +25,10 @@ public class TreasureIslandAppAuto implements Runnable
 	boolean keepExploring;
 	boolean updateDisplay;
 
+	static boolean exitt;
+
 	Paxos paxos;
+	static TreasureIslandAppAuto ta;
 
 	public TreasureIslandAppAuto(Paxos paxos, Logger logger, String gameId, int numPlayers, int yourPlayer)
 	{
@@ -53,7 +56,7 @@ public class TreasureIslandAppAuto implements Runnable
 
 	public void run()
 	{
-		while(keepExploring) // TODO: Make sure all the remaining messages are processed in the case of a graceful shutdown.
+		loop:while(keepExploring) // TODO: Make sure all the remaining messages are processed in the case of a graceful shutdown.
 		{
 			try
 			{
@@ -62,8 +65,14 @@ public class TreasureIslandAppAuto implements Runnable
 				}
 				Object[] info  = (Object[]) paxos.acceptTOMsg();
 				logger.fine("Received :" + Arrays.toString(info));
-				move((Integer)info[0], (Character)info[1], updateDisplay);
-				// displayIsland(); //we do not want to keep constantly refreshing the output display.
+				if((char)info[1]=='E') {
+					exitt=true; 
+					keepExploring=false; 
+					shutdown();
+					break loop;
+				}
+				move((Integer)info[0], (Character)info[1]);
+				// displayIsland();
 			}
 			catch(InterruptedException ie)
 			{
@@ -89,6 +98,23 @@ public class TreasureIslandAppAuto implements Runnable
 		ti.move(playerNum, direction);
 		if(displayIsland)
 			ti.displayIsland();
+	}
+
+	private void shutdown() throws InterruptedException{
+		logger.info("Shutting down Paxos");
+		ta.keepExploring = false;
+		// ta.tiThread.interrupt();
+		ta.tiThread.join(1000); // Wait maximum 1s for the app to process any more incomming messages that was in the queue.
+		// paxos.shutdownPaxos(); // shutdown paxos.
+		try {
+			paxos.shutdownPaxos(); // shutdown paxos.
+		} catch (Exception e) {
+			logger.severe(e.toString());;
+		}
+		ta.tiThread.interrupt(); // interrupt the app thread if it has not terminated.
+		ta.displayIsland(); // display the final map
+		logger.info("Process terminated.");
+		System.exit(0);
 	}
 
 	private static class AutoMoveGenerator
@@ -229,58 +255,60 @@ public class TreasureIslandAppAuto implements Runnable
 		ta.displayIsland(); // display the initial map
 
 		AutoMoveGenerator moveGen = new AutoMoveGenerator(maxmoves, interval, randseed, failmode, logger);
-		while(true) // Just keep polling for the user's input.
+		// while(true) // Just keep polling for the user's input.
+		out : while(!exitt) // Just keep polling for the user's input.
 		{
 			String cmd = moveGen.nextMove();
 			logger.fine("cmd is : " + cmd);
-			// ta.displayIsland();
-			if(cmd.equals("E")) {
-				logger.fine("Exiting");
-				System.out.println("Exiting");
 
-				break;
-			}
 			switch(cmd)
 			{
 				case "L":
 				case "R":
 				case "U":
 				case "D": // Capture the move and broadcast it to everyone along with the player number.
-					// Remember, this should block till this move has been accepted by the majority.
-					//	The logic for that should be built into the paxos module.
+				// Remember, this should block till this move has been accepted by the majority.
+				//	The logic for that should be built into the paxos module.
+				paxos.broadcastTOMsg(new Object[]{ playerNum, cmd.charAt(0) });
+				break;
+				case "E":
+					logger.fine("cmd : E, breaking outter loop");
 					paxos.broadcastTOMsg(new Object[]{ playerNum, cmd.charAt(0) });
-					break;
+					break out;
 				case "FI": // The process is to fail immediately.
-					failCheck.setFailurePoint(FailCheck.FailureType.IMMEDIATE);
-					break;
+				failCheck.setFailurePoint(FailCheck.FailureType.IMMEDIATE);
+				break;
 				case "FRP": // The process is supposed to fail immediately when it receives a propose message.
-					failCheck.setFailurePoint(FailCheck.FailureType.RECEIVEPROPOSE);
-					break;
+				failCheck.setFailurePoint(FailCheck.FailureType.RECEIVEPROPOSE);
+				break;
 				case "FSV": // The process is supposed to fail immediately after it sends a vote for leader election.
-					failCheck.setFailurePoint(FailCheck.FailureType.AFTERSENDVOTE);
-					break;
+				failCheck.setFailurePoint(FailCheck.FailureType.AFTERSENDVOTE);
+				break;
 				case "FSP": // The process is supposed to fail immediately after it sends a proposal to become leader.
-					failCheck.setFailurePoint(FailCheck.FailureType.AFTERSENDPROPOSE);
-					break;
+				failCheck.setFailurePoint(FailCheck.FailureType.AFTERSENDPROPOSE);
+				break;
 				case "FOL": // The process is supposed to fail immediately after a majority has accepted it as the leader.
-					failCheck.setFailurePoint(FailCheck.FailureType.AFTERBECOMINGLEADER);
-					break;
+				failCheck.setFailurePoint(FailCheck.FailureType.AFTERBECOMINGLEADER);
+				break;
 				case "FMV": // The process is supposed to fail immediately after a majority has accepted it’s proposed value.
-					failCheck.setFailurePoint(FailCheck.FailureType.AFTERVALUEACCEPT);
-					break;
+				failCheck.setFailurePoint(FailCheck.FailureType.AFTERVALUEACCEPT);
+				break;
 				default:
-					logger.warning("Command " + cmd + " is not a valid command for this app.");
+				logger.warning("Command " + cmd + " is not a valid command for this app.");
 			}
+			
 		}
 
-		logger.info("Done with all my moves ..."); // we just chill for a bit to ensure we got all the messages from others before we shutdown.
-																							// May have to increase this for higher maxmoves and smaller intervals.
-		try{ Thread.sleep(5000); } catch (InterruptedException ie) { logger.log(Level.SEVERE, "I got InterruptedException when I was chilling after all my moves.", ie); }
-		ta.keepExploring = false;
-		ta.tiThread.interrupt();
-		ta.tiThread.join(1000); // Wait maximum 1s for the app to process any more incomming messages that was in the queue.
 		logger.info("Shutting down Paxos");
-		paxos.shutdownPaxos(); // shutdown paxos.
+		ta.keepExploring = false;
+		// ta.tiThread.interrupt();
+		ta.tiThread.join(1000); // Wait maximum 1s for the app to process any more incomming messages that was in the queue.
+		// paxos.shutdownPaxos(); // shutdown paxos.
+		try {
+			paxos.shutdownPaxos(); // shutdown paxos.
+		} catch (Exception e) {
+			logger.severe(e.toString());;
+		}
 		ta.tiThread.interrupt(); // interrupt the app thread if it has not terminated.
 		ta.displayIsland(); // display the final map
 		logger.info("Process terminated.");
